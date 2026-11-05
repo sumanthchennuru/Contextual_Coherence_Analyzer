@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contextual Coherence Analyzer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-mark">CCA</div>
+  <div><h1>Contextual Coherence Analyzer</h1><p>Multi-paragraph consistency and relationship extraction</p></div>
+</header>
+<main class="container">
+  <section class="hero panel">
+    <div>
+      <span class="eyebrow">NLP ANALYSIS WORKSPACE</span>
+      <h2>Does your document stay on topic?</h2>
+      <p>Analyze paragraph relationships, compare consistency scores, and inspect possible topic drift.</p>
+    </div>
+    <div class="module-pills"><span>01 Preprocess</span><span>02 Extract</span><span>03 Compare</span><span>04 Visualize</span></div>
+  </section>
+
+  <section class="panel input-panel">
+    <div class="section-heading"><div><span class="eyebrow">START HERE</span><h2>Analyze documents</h2></div></div>
+    <form method="post" enctype="multipart/form-data" id="analysisForm">
+      <label for="text">Paste text and separate paragraphs with a blank line (at least two paragraphs).</label>
+      <textarea id="text" name="text" rows="9" placeholder="Paragraph 1: Artificial intelligence analyzes data to make predictions.&#10;&#10;Paragraph 2: Machine learning uses data to improve prediction accuracy.&#10;&#10;Paragraph 3: Solar panels convert sunlight into electricity.">{{ text_input }}</textarea>
+      <div class="upload-control">
+        <label for="documents">Or choose up to 20 documents to upload</label>
+        <input id="documents" name="documents" type="file" multiple accept=".txt,.md,.csv,.json,.html,.htm,.pdf,.docx">
+        <span class="hint">Supported formats: TXT, Markdown, CSV, JSON, HTML, PDF, DOCX · Up to 20 files and 100 MB total</span>
+        <span class="hint" id="fileSelection" aria-live="polite"></span>
+      </div>
+      <div class="form-bottom"><span class="hint">Each file is analyzed separately · Up to 20 paragraphs per file</span><button type="submit" class="primary">Analyze coherence <span>→</span></button></div>
+    </form>
+  </section>
+
+  {% if error %}<div class="alert error"><strong>Unable to analyze:</strong> {{ error }}</div>{% endif %}
+
+  {% if results %}
+  <div class="section-heading"><div><span class="eyebrow">BATCH REPORT</span><h2>Analysis results ({{ results|length }} item{% if results|length != 1 %}s{% endif %})</h2></div></div>
+  {% for analysis_item in results %}
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">DOCUMENT {{ loop.index }}</span><h2>{{ analysis_item.filename }}</h2></div></div>
+    {% if analysis_item.error %}
+    <div class="alert error"><strong>Unable to analyze {{ analysis_item.filename }}:</strong> {{ analysis_item.error }}</div>
+    {% else %}
+    {% set result = analysis_item.result %}
+  <section class="summary-grid">
+    <div class="metric panel"><span>Overall consistency</span><strong>{{ "%.1f"|format(result.overall * 100) }}%</strong><em class="{{ result.overall_label|lower }}">{{ result.overall_label }}</em></div>
+    <div class="metric panel"><span>Paragraphs analyzed</span><strong>{{ result.paragraphs|length }}</strong><em>Input segments</em></div>
+    <div class="metric panel"><span>Pairs compared</span><strong>{{ result.pairs|length }}</strong><em>All unique pairs</em></div>
+    <div class="metric panel"><span>Topic-drift alerts</span><strong>{{ result.drift|length }}</strong><em>{% if result.drift %}Review transitions{% else %}No low-score transitions{% endif %}</em></div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">REPORT</span><h2>Coherence summary</h2></div></div>
+    <p class="success-note"><strong>{{ result.summary_label|title }}</strong> — {{ result.summary }}</p>
+    <div class="paragraph-cards">
+      {% for item in result.paragraph_themes %}
+      <article class="mini-card"><h3>Paragraph {{ item.paragraph }}</h3><p><b>Theme</b>: {{ item.theme }}</p><div class="chips">{% for word in item.keywords %}<span>{{ word }}</span>{% endfor %}</div></article>
+      {% endfor %}
+    </div>
+    {% if result.document_themes %}
+    <p><b>Dominant document themes</b>: {{ result.document_themes|join(', ') }}</p>
+    {% endif %}
+    <div class="form-bottom">
+      <form method="post" action="{{ url_for('download_json') }}"><input type="hidden" name="text" value="{{ analysis_item.text|e }}"><button class="secondary" type="submit">Download JSON report</button></form>
+      <form method="post" action="{{ url_for('download_csv') }}"><input type="hidden" name="text" value="{{ analysis_item.text|e }}"><button class="secondary" type="submit">Download pairwise results (CSV)</button></form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">MODULE 1</span><h2>Preprocessing results</h2></div></div>
+    <div class="paragraph-cards">
+      {% for item in result.processed %}
+      <article class="mini-card"><h3>Paragraph {{ loop.index }}</h3><p class="original">{{ item.original }}</p><p><b>Cleaned text</b><br>{{ item.cleaned }}</p><p><b>Tokens after stopword removal and normalization</b></p><div class="chips">{% for token in item.tokens %}<span>{{ token }}</span>{% else %}<span>No tokens found</span>{% endfor %}</div></article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">MODULE 2</span><h2>Extracted relationships</h2></div><span class="hint">Heuristic extraction; review triplets for accuracy</span></div>
+    {% for group in result.triplets %}
+    <h3 class="subheading">Paragraph {{ loop.index }}</h3>
+    {% if group %}
+    <div class="table-wrap"><table><thead><tr><th>Subject</th><th>Relationship</th><th>Object</th><th>Source sentence</th></tr></thead><tbody>
+    {% for t in group %}<tr><td>{{ t.subject }}</td><td><span class="relation">{{ t.relation }}</span></td><td>{{ t.object }}</td><td>{{ t.sentence }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<p class="empty">No triplets were extracted from this paragraph using the current rules.</p>{% endif %}
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">MODULE 3</span><h2>Pairwise consistency analysis</h2></div></div>
+    <p class="hint">Final score = 0.5 × cosine similarity + 0.3 × Jaccard overlap + 0.2 × entity overlap.</p>
+    <div class="table-wrap"><table><thead><tr><th>Paragraph pair</th><th>Cosine</th><th>Jaccard</th><th>Entity overlap</th><th>Final score</th><th>Verdict</th><th>Shared keywords</th></tr></thead><tbody>
+    {% for p in result.pairs %}<tr><td>P{{ p.a }} ↔ P{{ p.b }}</td><td>{{ "%.3f"|format(p.cosine) }}</td><td>{{ "%.3f"|format(p.jaccard) }}</td><td>{{ "%.3f"|format(p.triplet) }}</td><td><b>{{ "%.3f"|format(p.score) }}</b></td><td><span class="status {{ p.verdict|lower }}">{{ p.verdict }}</span></td><td>{{ p.shared|join(", ") if p.shared else "—" }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    <div class="thresholds"><span><b>Consistent</b> ≥ 0.50</span><span><b>Moderate</b> 0.25–0.49</span><span><b>Inconsistent</b> &lt; 0.25</span></div>
+  </section>
+
+  <section class="visual-grid">
+    <article class="panel visual-panel"><span class="eyebrow">MODULE 4</span><h2>Consistency heatmap</h2><img class="chart" src="data:image/png;base64,{{ result.heatmap }}" alt="Paragraph consistency heatmap"></article>
+    <article class="panel visual-panel"><span class="eyebrow">MODULE 4</span><h2>Relationship graph</h2>{% if result.graph_img %}<img class="chart" src="data:image/png;base64,{{ result.graph_img }}" alt="Relationship graph"><p class="hint">Nodes represent extracted subjects and objects; directed edges represent relation labels.</p>{% else %}<p class="empty">No relationships were extracted, so a graph could not be created for this input.</p>{% endif %}</article>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading"><div><span class="eyebrow">INTERPRETATION</span><h2>Topic-drift alerts and keywords</h2></div></div>
+    {% if result.drift %}<div class="alert warning">{% for d in result.drift %}<p><strong>Possible topic drift:</strong> Paragraph {{ d.a }} → Paragraph {{ d.b }} scored {{ "%.3f"|format(d.score) }}, below the 0.25 threshold.</p>{% endfor %}</div>{% else %}<p class="success-note">No consecutive paragraph pair fell below the 0.25 topic-drift threshold.</p>{% endif %}
+    <div class="paragraph-cards">{% for item in result.keywords %}<article class="mini-card"><h3>Paragraph {{ item.paragraph }} — common tokens</h3><div class="chips">{% for word in item.words %}<span>{{ word }}</span>{% else %}<span>No keywords</span>{% endfor %}</div></article>{% endfor %}</div>
+    <p class="disclaimer">Scores estimate lexical and extracted-entity overlap. They do not prove factual correctness, contradiction, or full human-level understanding. Rule-based triplets may contain errors.</p>
+  </section>
+    {% endif %}
+  </section>
+  {% endfor %}
+  {% endif %}
+  <footer>Contextual Coherence Analyzer · Flask + Python NLP prototype</footer>
+</main>
+<script>
+  document.getElementById("documents").addEventListener("change", function () {
+    const selected = this.files.length;
+    document.getElementById("fileSelection").textContent = selected
+      ? selected + " file" + (selected === 1 ? "" : "s") + " selected"
+      : "";
+  });
+</script>
+</body>
+</html>
